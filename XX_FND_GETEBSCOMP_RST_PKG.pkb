@@ -3,7 +3,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   *********************************************************************************************
   Details : Package Body
   
-  Package Name : XX_FND_GETEBSRST_PKG.pkb
+  Package Name : XX_FND_GETEBSCOMP_RST_PKG.pkb
   Description  : Rest API Package for EBS Search Program: - To enable users to search for custom 
                  & Default Oracle EBS components efficiently via a user-friendly interface. 
                  Component types include concurrent programs, custom packages, tables, views, 
@@ -16,7 +16,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   REM    1.0         22-JULY-2025            Rohit Chaudhari       Intitial Version
   *********************************************************************************************
   ---------------------------------------------------------------------------------------------*/
-  ---- Global Constants
+  ---- Global Constants ----
   -- Status Constants
   gc_process_success CONSTANT VARCHAR2(120) := 'SUCCESS';
   gc_process_no_data_fnd CONSTANT VARCHAR2(120) := 'NO DATA FOUND';
@@ -62,24 +62,110 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
        --
   END check_if_process_enabled;
   --------------------------------------------------------------------------------
+  -- Procedure to get all Valueset details
+  PROCEDURE xx_get_value_set(p_find_component_name IN VARCHAR2,
+                             x_prog_dets           OUT VARCHAR2,
+                             x_status              OUT VARCHAR2,
+                             x_err_msg             OUT VARCHAR2) IS
+    --
+    lc_find_program_name VARCHAR2(12000) := p_find_component_name;
+    lc_program_dets      VARCHAR2(30000);
+    --
+    lc_err_msg VARCHAR2(30000);
+    --
+  BEGIN
+    --
+    log('Search Procedure : xx_get_value_set : ' || p_find_component_name);
+    --
+    SELECT json_object('component_type' VALUE 'Value Set',
+                       'data' VALUE
+                       json_object('value_set_id' VALUE
+                                   MIN(ffvt.flex_value_id),
+                                   'value_set_name' VALUE
+                                   MIN(ffvs.flex_value_set_name),
+                                   'values' VALUE
+                                   json_arrayagg(json_object('flex_value_id'
+                                                             VALUE
+                                                             ffv.flex_value_id,
+                                                             'flex_value'
+                                                             VALUE
+                                                             ffv.flex_value,
+                                                             'description' VALUE
+                                                             ffvt.description,
+                                                             'enabled_flag'
+                                                             VALUE
+                                                             ffv.enabled_flag,
+                                                             'child_range' VALUE CASE
+                                                               WHEN ffnh.child_flex_value_low IS NOT NULL OR
+                                                                    ffnh.child_flex_value_high IS NOT NULL THEN
+                                                                json_object('low' VALUE ffnh.child_flex_value_low,
+                                                                            'high' VALUE ffnh.child_flex_value_high)
+                                                               ELSE
+                                                                NULL
+                                                             END) RETURNING CLOB))
+                       RETURNING CLOB) AS value_set_json
+    INTO lc_program_dets
+    FROM apps.fnd_flex_value_sets           ffvs,
+         apps.fnd_flex_values               ffv,
+         apps.fnd_flex_values_tl            ffvt,
+         apps.fnd_flex_value_norm_hierarchy ffnh
+    WHERE 1 = 1
+    AND ffvs.flex_value_set_id = ffv.flex_value_set_id
+    AND ffv.flex_value_set_id = ffnh.flex_value_set_id(+)
+    AND ffv.flex_value_id = ffvt.flex_value_id
+    AND (ffv.end_date_active IS NULL OR trunc(ffv.start_date_active) <= trunc(SYSDATE))
+    AND (ffv.end_date_active IS NULL OR trunc(ffv.end_date_active) >= trunc(SYSDATE))
+    AND ffvt.language = userenv('LANG')
+    AND ffvs.flex_value_set_name = lc_find_program_name
+    GROUP BY ffvs.flex_value_set_id;
+    --
+    x_prog_dets := lc_program_dets;
+    x_status    := gc_process_success;
+    --
+  EXCEPTION
+    --
+    WHEN no_data_found THEN
+      --
+      x_status   := gc_process_no_data_fnd;
+      lc_err_msg := 'xx_get_value_set - No Data Found for current parameters : ' ||
+                    p_find_component_name;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+    
+    WHEN OTHERS THEN
+      --
+      lc_err_msg := 'xx_get_value_set - Unexpected Error while running  : ' ||
+                    dbms_utility.format_error_backtrace || SQLERRM;
+      x_status   := gc_process_error;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+      --
+  END xx_get_value_set;
+  -------
+  -- Procedure to get suggestions for Valueset
+  --------------------------------------------------------------------------------
   -- Procedure to get all concurrent program details
-  PROCEDURE xx_get_conc_program(p_find_program_name IN VARCHAR2,
+  PROCEDURE xx_get_conc_program(p_find_component_name IN VARCHAR2,
                                 x_prog_dets         OUT VARCHAR2,
                                 x_status            OUT VARCHAR2,
                                 x_err_msg           OUT VARCHAR2) IS
     --
-    lc_find_program_name VARCHAR2(12000) := p_find_program_name;                   
+    lc_find_program_name VARCHAR2(12000) := p_find_component_name;                   
     lc_program_dets      VARCHAR2(30000);
     --
     lc_err_msg           VARCHAR2(30000);
     --
   BEGIN
     --
-    log('Search Proc : xx_get_conc_program : ' || p_find_program_name);
+    log('Search Proc : xx_get_conc_program : ' || p_find_component_name);
     --
     SELECT JSON_OBJECT('component_type' VALUE 'Concurrent Program',
                    'data' VALUE 
-                   JSON_OBJECT('concurrent_porgram' VALUE 
+                   JSON_OBJECT('concurrent_program' VALUE 
                      JSON_OBJECT('concurrent program id' VALUE fcp.concurrent_program_id,
                                     'user_concurrent_program_name' VALUE fcpt.user_concurrent_program_name,
                                     'concurrent_program_name' VALUE fcp.concurrent_program_name,
@@ -120,7 +206,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     WHEN no_data_found THEN
       --
       x_status := gc_process_no_data_fnd;
-      lc_err_msg := 'xx_get_conc_program - No Data Found for current paramters : ' || p_find_program_name;
+      lc_err_msg := 'xx_get_conc_program - No Data Found for current paramters : ' || p_find_component_name;
       --
       x_err_msg := JSON_OBJECT('status' VALUE 'error',
                                'message' VALUE lc_err_msg);
@@ -136,14 +222,14 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       log(lc_err_msg);
       --
   END xx_get_conc_program;
-  --
+  -------
   -- Procedure to get suggestions for concurrent program
-  PROCEDURE xx_get_conc_suggest_program(p_find_program_name IN VARCHAR2,
+  PROCEDURE xx_get_conc_suggest_program(p_find_component_name IN VARCHAR2,
                                         x_prog_dets         OUT VARCHAR2,
                                         x_status            OUT VARCHAR2,
                                         x_err_msg           OUT VARCHAR2) IS
     --
-    lc_find_program_name VARCHAR2(12000) := '%' || p_find_program_name || '%';                   
+    lc_find_program_name VARCHAR2(12000) := '%' || p_find_component_name || '%';                   
     lc_program_dets      VARCHAR2(30000);
     --
     lc_err_msg           VARCHAR2(30000);
@@ -185,7 +271,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       --
       x_status   := gc_process_no_data_fnd;
       lc_err_msg := 'xx_get_conc_suggest_program - No Data Found for current paramters : ' ||
-                    p_find_program_name;
+                    p_find_component_name;
       --
       x_err_msg := json_object('status' VALUE 'error',
                                'message' VALUE lc_err_msg);
@@ -211,7 +297,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
                                          x_status               OUT VARCHAR2,
                                          x_error_msg            OUT VARCHAR2) AS
   --
-  lc_component_name    VARCHAR2(14000) := p_suggestion_text;
+  lc_component_name  VARCHAR2(14000) := p_suggestion_text;
   lc_comp_type       VARCHAR2(400) := p_comp_type;
   --
   lc_suggestion_results VARCHAR2(5000);
@@ -237,10 +323,28 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       --
     END IF;
     --
-    xx_get_conc_suggest_program(p_find_program_name => lc_component_name,
+    CASE
+    --
+      WHEN lc_comp_type = 'concurrent_program' THEN
+        --
+        xx_get_conc_suggest_program(p_find_component_name => lc_component_name,
                                 x_prog_dets         => lc_suggestion_results,
                                 x_status            => lc_check_status,
                                 x_err_msg           => lc_error_msg);
+        --
+      WHEN lc_comp_type = 'value_set' THEN
+        --
+        xx_get_value_set(p_find_component_name => lc_component_name,
+                         x_prog_dets           => lc_suggestion_results,
+                         x_status              => lc_check_status,
+                         x_err_msg             => lc_error_msg);
+        --
+      ELSE
+        --
+        lc_check_status := gc_process_error;
+        lc_error_msg    := 'Incorrect component type / Component type not supported : ' || p_comp_type;
+        --
+    END CASE;
     --
     IF lc_check_status != gc_process_success THEN
       --
@@ -303,10 +407,28 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       --
     END IF;
     --
-    xx_get_conc_program(p_find_program_name => lc_component_name,
-                        x_prog_dets         => lc_component_results,
-                        x_status            => lc_check_status,
-                        x_err_msg           => lc_error_msg);
+    CASE
+    --
+      WHEN lc_comp_type = 'concurrent_program' THEN
+        --
+        xx_get_conc_program(p_find_component_name => lc_component_name,
+                            x_prog_dets         => lc_component_results,
+                            x_status            => lc_check_status,
+                            x_err_msg           => lc_error_msg);
+        --
+      WHEN lc_comp_type = 'value_set' THEN
+        --
+        xx_get_value_set(p_find_component_name => lc_component_name,
+                         x_prog_dets           => lc_component_results,
+                         x_status              => lc_check_status,
+                         x_err_msg             => lc_error_msg);
+        --
+      ELSE
+        --
+        lc_check_status := gc_process_error;
+        lc_error_msg    := 'Incorrect component type / Component type not supported : ' || p_comp_type;
+        --
+    END CASE;
     --
     IF lc_check_status != gc_process_success THEN
       --
