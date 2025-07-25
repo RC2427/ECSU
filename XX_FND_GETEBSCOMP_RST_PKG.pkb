@@ -16,14 +16,53 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   REM    1.0         22-JULY-2025            Rohit Chaudhari       Intitial Version
   *********************************************************************************************
   ---------------------------------------------------------------------------------------------*/
+  ---- Global Constants
+  -- Status Constants
+  gc_process_success CONSTANT VARCHAR2(120) := 'SUCCESS';
+  gc_process_no_data_fnd CONSTANT VARCHAR2(120) := 'NO DATA FOUND';
+  gc_process_error CONSTANT VARCHAR2(120) := 'ERROR';
+  --
+  --
   PROCEDURE log(p_msg in VARCHAR2) IS
   BEGIN
     --
-    dbms_output.put_line(TO_CHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS TZH:TZM') || p_msg);
+    dbms_output.put_line(TO_CHAR(CURRENT_TIMESTAMP, 'YYYY-MM-DD HH24:MI:SS TZH:TZM') || ' : ' ||  p_msg);
     --
   END log;
-
-  -- Procedure to get Sales order details
+  --
+  FUNCTION check_if_process_enabled(p_check_var in VARCHAR2,
+                                    p_check_vs  in VARCHAR2) RETURN VARCHAR2 IS
+     --
+     lc_check_val VARCHAR2(5000) := 'VALUENOTSET';
+     --
+   BEGIN
+     --
+     SELECT ffvt.description
+       INTO lc_check_val
+       FROM apps.fnd_flex_value_sets ffvs,
+            apps.fnd_flex_values     ffv,
+            apps.fnd_flex_values_tl  ffvt
+      WHERE 1 = 1
+        AND ffvs.flex_value_set_id = ffv.flex_value_set_id
+        AND ffv.flex_value_id = ffvt.flex_value_id
+        AND ffv.enabled_flag = 'Y'
+        AND (ffv.end_date_active IS NULL OR trunc(ffv.start_date_active) <= trunc(SYSDATE))
+        AND (ffv.end_date_active IS NULL OR trunc(ffv.end_date_active) >= trunc(SYSDATE))
+        AND ffvt.language = userenv('LANG')
+        AND flex_value_set_name = p_check_vs
+        AND ffv.flex_value  = p_check_var;
+     --
+     RETURN lc_check_val;
+     --
+  EXCEPTION
+    --
+    WHEN NO_DATA_FOUND THEN
+       lc_check_val := 'VALUENOTSET';
+       RETURN lc_check_val;
+       --
+  END check_if_process_enabled;
+  --------------------------------------------------------------------------------
+  -- Procedure to get all concurrent program details
   PROCEDURE xx_get_conc_program(p_find_program_name IN VARCHAR2,
                                 x_prog_dets         OUT VARCHAR2,
                                 x_status            OUT VARCHAR2,
@@ -35,6 +74,8 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     lc_err_msg           VARCHAR2(30000);
     --
   BEGIN
+    --
+    log('Search Proc : xx_get_conc_program : ' || p_find_program_name);
     --
     SELECT JSON_OBJECT('component_type' VALUE 'Concurrent Program',
                    'data' VALUE 
@@ -72,13 +113,14 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     AND fcpt.user_concurrent_program_name = lc_find_program_name;
     --
     x_prog_dets := lc_program_dets;
+    x_status := gc_process_success;
     --
   EXCEPTION
     --
     WHEN no_data_found THEN
       --
-      x_status := 'no_data_found';
-      lc_err_msg := 'No Data found for current paramtere : ' || p_find_program_name;
+      x_status := gc_process_no_data_fnd;
+      lc_err_msg := 'xx_get_conc_program - No Data Found for current paramters : ' || p_find_program_name;
       --
       x_err_msg := JSON_OBJECT('status' VALUE 'error',
                                'message' VALUE lc_err_msg);
@@ -86,8 +128,8 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       
     WHEN OTHERS THEN
       --
-      lc_err_msg := 'Unexpected Error while running  : ' || dbms_utility.format_error_backtrace || SQLERRM;
-      x_status := 'ERROR';
+      lc_err_msg := 'xx_get_conc_program - Unexpected Error while running  : ' || dbms_utility.format_error_backtrace || SQLERRM;
+      x_status := gc_process_error;
       --
       x_err_msg := JSON_OBJECT('status' VALUE 'error',
                                'message' VALUE lc_err_msg);
@@ -95,12 +137,84 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       --
   END xx_get_conc_program;
   --
-  -- Procedure to get suggestions 
+  -- Procedure to get suggestions for concurrent program
+  PROCEDURE xx_get_conc_suggest_program(p_find_program_name IN VARCHAR2,
+                                        x_prog_dets         OUT VARCHAR2,
+                                        x_status            OUT VARCHAR2,
+                                        x_err_msg           OUT VARCHAR2) IS
+    --
+    lc_find_program_name VARCHAR2(12000) := '%' || p_find_program_name || '%';                   
+    lc_program_dets      VARCHAR2(30000);
+    --
+    lc_err_msg           VARCHAR2(30000);
+    --
+  BEGIN
+    --
+    log('Search Proc : xx_get_conc_suggest_program : ' || lc_find_program_name);
+    --
+    SELECT json_object('component_type' VALUE 'Concurrent Program',
+                       'data' VALUE json_object('concurrent_program' VALUE
+                                   json_arrayagg(json_object('concurrent_program_id'
+                                                             VALUE
+                                                             conc_suggestion.concurrent_program_id,
+                                                             'user_concurrent_program_name'
+                                                             VALUE
+                                                             conc_suggestion.user_concurrent_program_name)
+                                                 RETURNING CLOB)) RETURNING CLOB) AS conc_json
+    INTO lc_program_dets
+    FROM (SELECT fcp.concurrent_program_id,
+                 fcpt.user_concurrent_program_name
+          FROM apps.fnd_concurrent_programs    fcp,
+               apps.fnd_concurrent_programs_tl fcpt,
+               apps.fnd_executables            fe,
+               apps.fnd_executables_tl         fet
+          WHERE fe.executable_id = fet.executable_id
+          AND fcp.concurrent_program_id = fcpt.concurrent_program_id
+          AND fcpt.language = fet.language
+          AND fcp.executable_id = fe.executable_id
+          AND fcp.executable_application_id = fe.application_id
+          AND fcpt.user_concurrent_program_name LIKE lc_find_program_name
+          FETCH FIRST 5 rows ONLY) conc_suggestion;
+    --
+    x_prog_dets := lc_program_dets;
+    x_status    := gc_process_success;
+    --
+  EXCEPTION
+    --
+    WHEN no_data_found THEN
+      --
+      x_status   := gc_process_no_data_fnd;
+      lc_err_msg := 'xx_get_conc_suggest_program - No Data Found for current paramters : ' ||
+                    p_find_program_name;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+    
+    WHEN OTHERS THEN
+      --
+      lc_err_msg := 'xx_get_conc_suggest_program - Unexpected Error while running  : ' ||
+                    dbms_utility.format_error_backtrace || SQLERRM;
+      x_status   := gc_process_error;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+      --
+  END xx_get_conc_suggest_program;
+  --------------------------------------------------------------------------------
+  --
+  -- Procedure to get suggestions (MAIN Procedure)
   PROCEDURE xx_get_compo_suggest_wrapper(p_suggestion_text      IN VARCHAR2,
                                          p_comp_type            IN VARCHAR2,
                                          x_suggestion_results   OUT VARCHAR2,
+                                         x_status               OUT VARCHAR2,
                                          x_error_msg            OUT VARCHAR2) AS
   --
+  lc_component_name    VARCHAR2(14000) := p_suggestion_text;
+  lc_comp_type       VARCHAR2(400) := p_comp_type;
+  --
+  lc_suggestion_results VARCHAR2(5000);
   lc_check_status VARCHAR2(600);
   lc_error_msg    VARCHAR2(700);
   --
@@ -108,28 +222,59 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   --
   BEGIN
     --
-    NULL;
+    IF upper(check_if_process_enabled('PROCESS_ENABLED','XX_ECSU_SETUP_VS')) != 'YES' THEN
+      --
+      lc_error_msg := 'xx_get_compo_dets_wrapper - Process not enabled in Setup VS : XX_ECSU_SETUP_VS';
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    IF lc_component_name IS NULL OR lc_comp_type IS NULL THEN
+      --
+      lc_error_msg := 'xx_get_compo_dets_wrapper - Input paremeters are NULL : p_suggestion_text/p_comp_type : ' 
+                      || p_suggestion_text || ' / ' || p_comp_type;
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    xx_get_conc_suggest_program(p_find_program_name => lc_component_name,
+                                x_prog_dets         => lc_suggestion_results,
+                                x_status            => lc_check_status,
+                                x_err_msg           => lc_error_msg);
+    --
+    IF lc_check_status != gc_process_success THEN
+      --
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    x_suggestion_results := lc_suggestion_results;
+    x_status := gc_process_success;
     --
   EXCEPTION
     --
     WHEN ex_custom_issue THEN
       --
+      lc_error_msg := 'ORACLE PL/SQL ERROR : ' || lc_error_msg;
       log(lc_error_msg);
       x_error_msg := lc_error_msg;
+      x_status := gc_process_error;
       --
     WHEN OTHERS THEN
       --
-      lc_error_msg := 'ORACLE PL/SQL : Unexpected Error occured while searching ' || SQLERRM || ' : ' 
+      lc_error_msg := 'ORACLE PL/SQL ERROR : xx_get_compo_suggest_wrapper - Unexpected Error occured while searching ' || SQLERRM || ' : ' 
                        || dbms_utility.format_error_backtrace;
       log(lc_error_msg);
       x_error_msg := lc_error_msg;
+      x_status := gc_process_error;
       --
   END xx_get_compo_suggest_wrapper;
   --
-  -- Procedure to get component details 
+  -- Procedure to get component details ( MAIN Procedure )
   PROCEDURE xx_get_compo_dets_wrapper(p_component_name    IN VARCHAR2,
                                       p_comp_type         IN VARCHAR2,
                                       x_component_results OUT VARCHAR2,
+                                      x_status            OUT VARCHAR2,
                                       x_error_msg         OUT VARCHAR2) AS
     --
     lc_component_name    VARCHAR2(14000) := p_component_name;
@@ -143,24 +288,53 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     --
   BEGIN
     --
-    xx_get_conc_program(p_find_program_name => lc_component_results,
+    IF upper(check_if_process_enabled('PROCESS_ENABLED','XX_ECSU_SETUP_VS')) != 'YES' THEN
+      --
+      lc_error_msg := 'xx_get_compo_dets_wrapper - Process not enabled in Setup VS : XX_ECSU_SETUP_VS';
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    IF p_component_name IS NULL OR p_comp_type IS NULL THEN
+      --
+      lc_error_msg := 'xx_get_compo_dets_wrapper - Input paremeters are NULL : p_component_name/p_comp_type : ' 
+                      || p_component_name || ' / ' || p_comp_type;
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    xx_get_conc_program(p_find_program_name => lc_component_name,
                         x_prog_dets         => lc_component_results,
                         x_status            => lc_check_status,
                         x_err_msg           => lc_error_msg);
+    --
+    IF lc_check_status != gc_process_success THEN
+      --
+      RAISE ex_custom_issue;
+      --
+    END IF;
+    --
+    x_component_results := lc_component_results;
+    x_status := gc_process_success;
     --
   EXCEPTION
     --
     WHEN ex_custom_issue THEN
       --
+      lc_error_msg := 'ORACLE PL/SQL ERROR : ' || lc_error_msg;
       log(lc_error_msg);
+      --
       x_error_msg := lc_error_msg;
+      x_status := gc_process_error;
       --
     WHEN OTHERS THEN
       --
-      lc_error_msg := 'ORACLE PL/SQL : Unexpected Error occured while searching ' || SQLERRM || ' : ' 
+      lc_error_msg := 'ORACLE PL/SQL ERROR : xx_get_compo_dets_wrapper - Unexpected Error occured while searching ' || SQLERRM || ' : ' 
                        || dbms_utility.format_error_backtrace;
       log(lc_error_msg);
+      --
       x_error_msg := lc_error_msg;
+      x_status := gc_process_error;
       --
   END xx_get_compo_dets_wrapper;
 

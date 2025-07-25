@@ -16,7 +16,7 @@ CREATE OR REPLACE PACKAGE XX_FND_GETEBSCOMP_RST_PKG AS
   Description  : Rest API Package for EBS Search Program: - To enable users to search for custom 
                  & Default Oracle EBS components efficiently via a user-friendly interface. 
                  Component types include concurrent programs, custom packages, tables, views, 
-                 workflows, and more
+                 workflows, and more.
   Doc ID       : 
   
   =============================================================================================
@@ -30,6 +30,7 @@ CREATE OR REPLACE PACKAGE XX_FND_GETEBSCOMP_RST_PKG AS
   * @param p_suggestion_text VARCHAR2
   * @param p_comp_type VARCHAR2
   * @param x_suggestion_results VARCHAR2
+  * @param x_status VARCHAR2
   * @param x_error_msg VARCHAR2
   * @rep:displayname Search Suggestion Utility Procedure 
   * @rep:scope public
@@ -40,13 +41,15 @@ CREATE OR REPLACE PACKAGE XX_FND_GETEBSCOMP_RST_PKG AS
   PROCEDURE xx_get_compo_suggest_wrapper(p_suggestion_text      IN VARCHAR2,
                                          p_comp_type            IN VARCHAR2,
                                          x_suggestion_results   OUT VARCHAR2,
+                                         x_status               OUT VARCHAR2,
                                          x_error_msg            OUT VARCHAR2);
   /*#
   * Procedure to get oracle component details
   * @param p_component_name VARCHAR2
   * @param p_comp_type VARCHAR2
   * @param x_component_results VARCHAR2
-  * @param x_error_message VARCHAR2
+  * @param x_status VARCHAR2
+  * @param x_error_msg VARCHAR2
   * @rep:displayname Search Utility Procedure 
   * @rep:scope public
   * @rep:lifecycle active
@@ -56,6 +59,7 @@ CREATE OR REPLACE PACKAGE XX_FND_GETEBSCOMP_RST_PKG AS
   PROCEDURE xx_get_compo_dets_wrapper(p_component_name       IN VARCHAR2,
                                       p_comp_type            IN VARCHAR2,
                                       x_component_results    OUT VARCHAR2,
+                                      x_status               OUT VARCHAR2,
                                       x_error_msg            OUT VARCHAR2);
 
 END XX_FND_GETEBSCOMP_RST_PKG;
