@@ -11,9 +11,9 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   Doc ID       : 
   
   =============================================================================================
-  REM    Version     Revision Date           Developer             Change Description 
-  ---    -------     ------------            ---------------       ------------------
-  REM    1.0         22-JULY-2025            Rohit Chaudhari       Intitial Version
+  REM    Version     Revision Date         Developer             Change Description 
+  ---    -------     ------------          ---------------       ------------------
+  REM    1.0         22-JULY-2025          Rohit Chaudhari       Intitial Version
   *********************************************************************************************
   ---------------------------------------------------------------------------------------------*/
   ---- Global Constants ----
@@ -147,6 +147,61 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   END xx_get_value_set;
   -------
   -- Procedure to get suggestions for Valueset
+  PROCEDURE xx_get_suggest_value_set(p_find_component_name IN VARCHAR2,
+                                     x_prog_dets           OUT VARCHAR2,
+                                     x_status              OUT VARCHAR2,
+                                     x_err_msg             OUT VARCHAR2) IS
+    --
+    lc_find_program_name VARCHAR2(12000) := '%' || p_find_component_name || '%';
+    lc_program_dets      VARCHAR2(30000);
+    --
+    lc_err_msg VARCHAR2(30000);
+    --
+  BEGIN
+    --
+    log('Search Procedure : xx_get_value_set : ' || p_find_component_name);
+    --
+    SELECT json_object('component_type' VALUE 'Value Set',
+                       'data' VALUE
+                       json_arrayagg(json_object('value_set_id' VALUE
+                                                 vs_suggestions.flex_value_set_id,
+                                                 'value_set_name' VALUE
+                                                 vs_suggestions.flex_value_set_name)
+                                     RETURNING CLOB)) AS value_set_json
+    INTO lc_program_dets
+    FROM (SELECT ffvs.flex_value_set_id,
+             ffvs.flex_value_set_name
+          FROM apps.fnd_flex_value_sets ffvs
+          WHERE 1 = 1
+          AND ffvs.flex_value_set_name LIKE lc_find_program_name
+          FETCH FIRST 6 ROWS ONLY) vs_suggestions;
+    --
+    x_prog_dets := lc_program_dets;
+    x_status    := gc_process_success;
+    --
+  EXCEPTION
+    --
+    WHEN no_data_found THEN
+      --
+      x_status   := gc_process_no_data_fnd;
+      lc_err_msg := 'xx_get_suggest_value_set - No Data Found for current parameters : ' ||
+                    p_find_component_name;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+    
+    WHEN OTHERS THEN
+      --
+      lc_err_msg := 'xx_get_suggest_value_set - Unexpected Error while running  : ' ||
+                    dbms_utility.format_error_backtrace || SQLERRM;
+      x_status   := gc_process_error;
+      --
+      x_err_msg := json_object('status' VALUE 'error',
+                               'message' VALUE lc_err_msg);
+      log(lc_err_msg);
+      --
+  END xx_get_suggest_value_set;
   --------------------------------------------------------------------------------
   -- Procedure to get all concurrent program details
   PROCEDURE xx_get_conc_program(p_find_component_name IN VARCHAR2,
@@ -177,7 +232,7 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
                      'executable' VALUE JSON_OBJECT('executable_id' VALUE fe.executable_id,
                                   'executable_name' VALUE fe.executable_name,
                                   'execution_file_name' VALUE fe.execution_file_name,
-                                  'executable Type' VALUE flv.meaning))) AS CONC_JSON
+                                  'executable_type' VALUE flv.meaning))) AS CONC_JSON
     INTO lc_program_dets 
     FROM apps.fnd_concurrent_programs    fcp,
          apps.fnd_concurrent_programs_tl fcpt,
@@ -288,8 +343,9 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
       log(lc_err_msg);
       --
   END xx_get_conc_suggest_program;
-  --------------------------------------------------------------------------------
-  --
+  ---------------------------------------------------------------------------------
+ /*===============================================================================
+  =================================================================================*/
   -- Procedure to get suggestions (MAIN Procedure)
   PROCEDURE xx_get_compo_suggest_wrapper(p_suggestion_text      IN VARCHAR2,
                                          p_comp_type            IN VARCHAR2,
@@ -325,19 +381,19 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     --
     CASE
     --
-      WHEN lc_comp_type = 'concurrent_program' THEN
+      WHEN lower(lc_comp_type) = 'concurrent_program' THEN
         --
         xx_get_conc_suggest_program(p_find_component_name => lc_component_name,
-                                x_prog_dets         => lc_suggestion_results,
-                                x_status            => lc_check_status,
-                                x_err_msg           => lc_error_msg);
+                                    x_prog_dets         => lc_suggestion_results,
+                                    x_status            => lc_check_status,
+                                    x_err_msg           => lc_error_msg);
         --
-      WHEN lc_comp_type = 'value_set' THEN
+      WHEN lower(lc_comp_type) = 'value_set' THEN
         --
-        xx_get_value_set(p_find_component_name => lc_component_name,
-                         x_prog_dets           => lc_suggestion_results,
-                         x_status              => lc_check_status,
-                         x_err_msg             => lc_error_msg);
+        xx_get_suggest_value_set(p_find_component_name => lc_component_name,
+                                 x_prog_dets         => lc_suggestion_results,
+                                 x_status            => lc_check_status,
+                                 x_err_msg           => lc_error_msg);
         --
       ELSE
         --
@@ -409,14 +465,14 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
     --
     CASE
     --
-      WHEN lc_comp_type = 'concurrent_program' THEN
+      WHEN lower(lc_comp_type) = 'concurrent_program' THEN
         --
         xx_get_conc_program(p_find_component_name => lc_component_name,
                             x_prog_dets         => lc_component_results,
                             x_status            => lc_check_status,
                             x_err_msg           => lc_error_msg);
         --
-      WHEN lc_comp_type = 'value_set' THEN
+      WHEN lower(lc_comp_type) = 'value_set' THEN
         --
         xx_get_value_set(p_find_component_name => lc_component_name,
                          x_prog_dets           => lc_component_results,
