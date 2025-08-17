@@ -35,7 +35,7 @@ Before you begin, please ensure you have the following installed and configured 
 Docker & Docker Compose: You need a recent version of Docker Engine and Docker Compose. 
 The recommended way to get this is by installing Docker Desktop (for Mac/Windows) or Docker Engine (for Linux).
 
-Installation Package: Download the latest installation package from the official release section.
+Installation Package: Download the latest installation package from the official release section (ECSU_INSTALLATION.zip).
 
 Extraction: Extract the contents of the downloaded package into your desired installation directory.
 
