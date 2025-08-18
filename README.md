@@ -18,7 +18,8 @@ for the container side of ECSU.
 **User and Instance Managment :**
 
 
-<img width="1281" height="550" alt="image" src="https://github.com/user-attachments/assets/524ae928-3c10-4323-ae7b-04ce13e99c2c" />
+<img width="1185" height="506" alt="image" src="https://github.com/user-attachments/assets/691855b0-2254-41bb-ae6d-1d5ec9444a11" />
+
 
 <img width="1200" height="375" alt="image" src="https://github.com/user-attachments/assets/11ce2c22-3327-4cb8-af9f-16ffaef7aa20" />
 
