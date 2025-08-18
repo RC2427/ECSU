@@ -93,7 +93,7 @@ For security reasons, the initial setup creates temporary administrative and use
    
    ii) In keycloak console setup your proper password requirements
 
-**Note:** New users are approved via App's User Management have default password - ChangeIt123, and will be prompted to updated on thier first login (this will chnage in future releases)
+**Note:** New users are approved via App's User Management dashboard and have the default password - ChangeIt123. User's will be prompted to update thier password on the first login (this will chnage in future releases)
 
 ## 🔧 Mandatory: Configure SMTP for Email Functionality
 
