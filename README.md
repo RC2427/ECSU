@@ -25,7 +25,7 @@ for the container side of ECSU.
 
 
 
-## ECSU Non Oracle Setup -- Installtion Instructions
+## ECSU Non Oracle Setup -- Installation Instructions
 
 This guide provides step-by-step instructions for installing and running the ECSU application using Docker. 
 The setup uses a docker-compose.yml file to manage all the necessary services.
