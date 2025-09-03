@@ -13,14 +13,14 @@ CREATE OR REPLACE PACKAGE BODY XX_FND_GETEBSCOMP_RST_PKG AS
   =============================================================================================
   REM    Version     Revision Date         Developer             Change Description 
   ---    -------     ------------          ---------------       ------------------
-  REM    1.0         22-JULY-2025          Rohit Chaudhari       Intitial Version
+  REM    1.0         22-JULY-2025          github@RC2427         Intitial Version
   *********************************************************************************************
   ---------------------------------------------------------------------------------------------*/
   ---- Global Constants ----
   -- Status Constants
-  gc_process_success CONSTANT VARCHAR2(120) := 'SUCCESS';
+  gc_process_success     CONSTANT VARCHAR2(120) := 'SUCCESS';
   gc_process_no_data_fnd CONSTANT VARCHAR2(120) := 'NO DATA FOUND';
-  gc_process_error CONSTANT VARCHAR2(120) := 'ERROR';
+  gc_process_error       CONSTANT VARCHAR2(120) := 'ERROR';
   --
   --
   PROCEDURE log(p_msg in VARCHAR2) IS
